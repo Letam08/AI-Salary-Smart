@@ -16,14 +16,39 @@ st.set_page_config(page_title="AI Salary Smart", page_icon="🤖", layout="wide"
 st.title("🤖 AI Salary Smart - Dự Đoán Lương Ngành AI")
 st.markdown("Ứng dụng hỗ trợ dự đoán mức lương hàng năm dựa trên thuật toán **Random Forest Regression**.")
 
+# Từ điển dịch tên các biến sang tiếng Việt có nghĩa
+vietnamese_labels = {
+    "job_title": "Tên công việc (Chức danh)",
+    "job_category": "Phân loại công việc",
+    "industry": "Ngành nghề công ty",
+    "required_skills": "Kỹ năng yêu cầu",
+    "experience_level": "Cấp bậc kinh nghiệm",
+    "years_of_experience": "Số năm kinh nghiệm",
+    "education_required": "Yêu cầu học vấn",
+    "country": "Quốc gia",
+    "city": "Thành phố",
+    "company_size": "Quy mô công ty",
+    "salary_min_usd": "Mức lương tối thiểu (USD)",
+    "salary_max_usd": "Mức lương tối đa (USD)",
+    "remote_work": "Hình thức làm việc từ xa",
+    "ai_salary_premium_pct": "Phần trăm lương thưởng AI (%)",
+    "demand_score": "Điểm nhu cầu thị trường",
+    "demand_growth_yoy_pct": "Tăng trưởng nhu cầu theo năm (%)",
+    "benefits_score_10": "Điểm phúc lợi (thang 10)",
+    "posting_year": "Năm đăng tin tuyển dụng",
+    "posting_month": "Tháng đăng tin tuyển dụng",
+    "is_senior": "Cấp bậc Senior (0/1)",
+    "is_remote_friendly": "Hỗ trợ làm từ xa (0/1)",
+    "is_llm_role": "Vị trí chuyên gia LLM (0/1)",
+    "salary_tier": "Bậc lương phân loại"
+}
+
 # Hàm tải và huấn luyện mô hình (sử dụng cache để tối ưu tốc độ)
 @st.cache_resource
 def load_model_and_data():
-    # Đọc dữ liệu từ file Excel (đặt cùng thư mục)
     df_train = pd.read_excel("Nhom7_AIJobsSalary_train.xlsx")
     df_test = pd.read_excel("Nhom7_AIJobsSalary_test.xlsx")
     
-    # Tự động xác định cột mục tiêu (lương)
     salary_cols = [col for col in df_train.columns if any(k in col.lower() for k in ["salary", "luong", "wage", "pay"])]
     if usd_cols := [c for c in salary_cols if 'usd' in c.lower()]:
         target_col = usd_cols[0]
@@ -43,7 +68,6 @@ def load_model_and_data():
     numerical_cols = X_train.select_dtypes(include=[np.number]).columns.tolist()
     categorical_cols = X_train.select_dtypes(include=[object, 'category']).columns.tolist()
     
-    # Xây dựng Pipeline tiền xử lý và mô hình
     num_transformer = Pipeline(steps=[('imputer', SimpleImputer(strategy='median'))])
     cat_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='most_frequent')),
@@ -66,7 +90,6 @@ def load_model_and_data():
 try:
     model, df_train, df_test, X_test, y_test, target_col, features = load_model_and_data()
     
-    # Tạo thanh menu bên trái
     menu = st.sidebar.selectbox("📂 Chọn chức năng", ["🔮 Dự đoán lương cá nhân", "📊 Khám phá & Trực quan hóa dữ liệu"])
     
     if menu == "🔮 Dự đoán lương cá nhân":
@@ -76,16 +99,18 @@ try:
         col1, col2 = st.columns(2)
         
         for i, col in enumerate(features):
+            # Lấy tên tiếng Việt từ từ điển, nếu không có thì giữ nguyên tên gốc
+            label_vi = vietnamese_labels.get(col, col)
             with (col1 if i % 2 == 0 else col2):
                 unique_vals = df_train[col].dropna().unique()
                 if df_train[col].dtype in [np.number]:
                     min_v = float(df_train[col].min())
                     max_v = float(df_train[col].max())
                     mean_v = float(df_train[col].mean())
-                    user_input[col] = st.number_input(f"{col}", min_value=min_v, max_value=max_v, value=mean_v)
+                    user_input[col] = st.number_input(f"**{label_vi}**", min_value=min_v, max_value=max_v, value=mean_v)
                 else:
                     options = list(unique_vals)
-                    user_input[col] = st.selectbox(f"{col}", options)
+                    user_input[col] = st.selectbox(f"**{label_vi}**", options)
         
         if st.button("🚀 Dự đoán mức lương", type="primary"):
             input_df = pd.DataFrame([user_input])
@@ -110,10 +135,8 @@ try:
         st.markdown("---")
         st.subheader("📊 Biểu đồ trực quan học thuật")
         
-        # Vẽ 3 biểu đồ giống báo cáo
         fig, axes = plt.subplots(1, 3, figsize=(18, 5))
         
-        # 1. Line plot so sánh
         n_samples = min(50, len(y_test))
         axes[0].plot(y_test.values[:n_samples], label="Thực tế (Actual)", color="#2ca02c", marker='o', linewidth=2)
         axes[0].plot(y_pred[:n_samples], label="Dự đoán (Predicted)", color="#d62728", marker='x', linestyle='--', linewidth=2)
@@ -122,7 +145,6 @@ try:
         axes[0].set_ylabel("Mức lương (USD/năm)")
         axes[0].legend()
         
-        # 2. Scatter plot tương quan
         axes[1].scatter(y_test.values, y_pred, alpha=0.7, color="#1f77b4", edgecolors='w')
         min_v, max_v = min(y_test.min(), y_pred.min()), max(y_test.max(), y_pred.max())
         axes[1].plot([min_v, max_v], [min_v, max_v], color='red', linestyle='--', linewidth=2, label="Đường hoàn hảo y = x")
@@ -131,7 +153,6 @@ try:
         axes[1].set_ylabel("Mức lương dự đoán")
         axes[1].legend()
         
-        # 3. Histogram phân bố sai số (Residuals)
         residuals = y_test.values - y_pred
         sns.histplot(residuals, kde=True, ax=axes[2], color="purple")
         axes[2].set_title("Biểu đồ Phân bố Sai số (Residuals)")
